@@ -1,5 +1,7 @@
 package com.wix.detox;
 
+import android.app.Activity;
+import android.app.Instrumentation;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -69,9 +71,10 @@ import android.support.test.uiautomator.UiSelector;
  * <p>If not set, then Detox tests are no ops. So it's safe to mix it with other tests.</p>
  */
 public final class Detox {
-    static ActivityTestRule sActivityTestRule;
+    private static ActivityTestRule sActivityTestRule;
 
-    private Detox() {}
+    private Detox() {
+    }
 
     /**
      * <p>
@@ -146,27 +149,39 @@ public final class Detox {
     }
 
     public static void startActivityFromUrl(String url) {
-        launchActivity(intentWithUrl(url));
-    }
 
-    public static Intent intentWithUrl(String url) {
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setData(Uri.parse(url));
-        return intent;
-    }
+        // Ideally, we would just call sActivityTestRule.launchActivity(intentWithUrl(url)) and get it over with.
+        // BUT!!! as it turns out, Espresso has an issue where doing this for an activity running in the background
+        // would have it set up an ActivityMonitor set up - waiting for the activity to load, *without ever being released*.
+        // It will finally fail after a 45 seconds timeout. The reason for the bug is in TODO.
+        // This is the core reason for this issue: https://github.com/wix/Detox/issues/1125
+        // What it forces us to do, then, is this -
+        // 1. Launch the activity by "ourselves" from the OS (i.e. using context.startActivity()).
+        // 2. Set up an activity monitor by ourselves -- such that it would block until the activity is ready.
+        // ^ Hence the code below.
 
+        final Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+
+        final Intent intent = intentWithUrl(url);
+        final Activity activity = sActivityTestRule.getActivity();
+        final Instrumentation.ActivityMonitor activityMonitor = new Instrumentation.ActivityMonitor(activity.getClass().getName(), null, true);
+
+        activity.startActivity(intent);
+        instrumentation.addMonitor(activityMonitor);
+        instrumentation.waitForMonitorWithTimeout(activityMonitor, 12345L);
+    }
 
     // TODO: Can't get to launch the app back to previous instance using only intents from inside instrumentation (not sure why).
     // this is a (hopefully) temp solution. Should use intents instead.
     public static void launchMainActivity() throws RemoteException, UiObjectNotFoundException {
-        Context targetContext = InstrumentationRegistry.getTargetContext();
+        final Context targetContext = InstrumentationRegistry.getTargetContext();
 
 //        Intent intent = targetContext.getPackageManager().getLaunchIntentForPackage(targetContext.getPackageName());
 //        intent.setPackage(null);
 //        intent.removeCategory(Intent.CATEGORY_LAUNCHER);;
 //        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
 //        Log.d("Detox", intent.toString());
-//        launchActivity(intent);
+//        sActivityTestRule.launchActivity(intent);
 
         UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         device.pressRecentApps();
@@ -176,7 +191,15 @@ public final class Detox {
         recentApp.click();
     }
 
-    private static void launchActivity(Intent intent) {
-        sActivityTestRule.launchActivity(intent);
+    private static Intent intentWithUrl(String url) {
+        final Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setData(Uri.parse(url));
+
+        // This is "a must" in order to support various activity rules (potentially associated with different activities, that
+        // can handle this intent action + uri schema combination).
+        // If this is removed, Android's activity disambiguity bottom-selection dialog will show, prompting for a user selection,
+        // instead of 'just launching'.
+        intent.setClass(InstrumentationRegistry.getTargetContext(), sActivityTestRule.getActivity().getClass());
+        return intent;
     }
 }

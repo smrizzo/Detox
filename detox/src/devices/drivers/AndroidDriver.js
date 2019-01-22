@@ -140,7 +140,7 @@ class AndroidDriver extends DeviceDriverBase {
   }
 
   async deliverPayload(params) {
-    if(params.url) {
+    if (params.url) {
       const call = DetoxApi.startActivityFromUrl(params.url);
       await this.invocationManager.execute(call);
     }
