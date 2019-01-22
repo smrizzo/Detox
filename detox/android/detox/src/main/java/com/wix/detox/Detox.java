@@ -145,10 +145,6 @@ public final class Detox {
         }
     }
 
-    public static void launchActivity(Intent intent) {
-        sActivityTestRule.launchActivity(intent);
-    }
-
     public static void startActivityFromUrl(String url) {
         launchActivity(intentWithUrl(url));
     }
@@ -178,5 +174,9 @@ public final class Detox {
         String appName = targetContext.getApplicationInfo().loadLabel(targetContext.getPackageManager()).toString();
         UiObject recentApp = device.findObject(selector.descriptionContains(appName));
         recentApp.click();
+    }
+
+    private static void launchActivity(Intent intent) {
+        sActivityTestRule.launchActivity(intent);
     }
 }

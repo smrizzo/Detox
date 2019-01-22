@@ -77,6 +77,10 @@ class Device {
       baseLaunchArgs['detoxDisableTouchIndicators'] = true;
     }
 
+    if (params.newInstance && params.androidSingleTask) {
+      baseLaunchArgs['forceSingleTask'] = true;
+    }
+
     const _bundleId = bundleId || this._bundleId;
     if (this._isAppInBackground(params, _bundleId)) {
       if (hasPayload) {
